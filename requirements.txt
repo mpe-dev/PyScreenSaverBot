@@ -1,0 +1,16 @@
+# ─────────────────────────────────────────────
+# PyScreenSaverBot — requirements.txt
+# ─────────────────────────────────────────────
+
+# Web framework + WSGI server
+Django>=4.2,<5.0
+gunicorn>=21.0
+
+# Static file serving (production, without NGINX)
+whitenoise>=6.6
+
+# Image processing
+Pillow>=10.0
+
+# HTTP fetcher source
+requests>=2.31

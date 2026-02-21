@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ScreenSaver</title>
+  <style>
+    /* ── Reset & base ─────────────────────────────────────────────── */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+      overflow: hidden;
+      font-family: sans-serif;
+    }
+
+    /* ── Phase 1: Preview collage ─────────────────────────────────── */
+    #collage {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px;
+      padding: 3px;
+      background: #111;
+      align-content: flex-start;
+      opacity: 1;
+      transition: opacity 1.2s ease;
+    }
+
+    .thumb {
+      flex: 1 1 18%;
+      min-width: 120px;
+      max-height: 34vh;
+      overflow: hidden;
+      background: #222;
+    }
+
+    .thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* ── Phase 2: Slideshow ───────────────────────────────────────── */
+    #slideshow {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+    }
+
+    /* ── Transition keyframes ─────────────────────────────────────── */
+    @keyframes burnIn   { from { filter: brightness(0); } to { filter: brightness(1); } }
+    @keyframes fadeIn   { from { opacity: 0; }            to { opacity: 1; } }
+    @keyframes slideIn  { from { transform: translateX(100%); } to { transform: translateX(0); } }
+    @keyframes zoomIn   { from { transform: scale(1.15); opacity: 0; }
+                          to   { transform: scale(1);    opacity: 1; } }
+
+    .transition-burn  { animation: burnIn  1.4s ease forwards; }
+    .transition-fade  { animation: fadeIn  1.4s ease forwards; }
+    .transition-slide { animation: slideIn 0.9s ease forwards; }
+    .transition-zoom  { animation: zoomIn  1.4s ease forwards; }
+
+    /* ── Empty-state message ──────────────────────────────────────── */
+    #empty {
+      display: none;
+      position: fixed;
+      inset: 0;
+      align-items: center;
+      justify-content: center;
+      color: #555;
+      font-size: 1.4rem;
+      letter-spacing: 0.05em;
+    }
+  </style>
+</head>
+<body>
+
+<div id="collage"></div>
+<div id="slideshow"></div>
+<div id="empty">No images yet — waiting for ingestion...</div>
+
+<script>
+  "use strict";
+
+  // ── Config injected by Django ──────────────────────────────────────────────
+  const GRID_REFRESH_MS   = {{ grid_fetch_interval_seconds }} * 1000;
+  const SLIDE_INTERVAL_MS = {{ slideshow_interval_seconds }} * 1000;
+  const TRANSITION        = "{{ transition }}";
+  const TRANSITION_MODE   = "{{ transition_mode }}";
+
+  const ALL_TRANSITIONS = ["burn", "fade", "slide", "zoom"];
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let previews     = [];
+  let slideIndex   = 0;
+  let inSlideshow  = false;
+  let slideTimer   = null;
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function pickTransition() {
+    if (TRANSITION_MODE === "random") {
+      return ALL_TRANSITIONS[Math.floor(Math.random() * ALL_TRANSITIONS.length)];
+    }
+    return TRANSITION;
+  }
+
+  function imageUrl(filename) {
+    return "/media/images/" + filename;
+  }
+
+  // ── Phase 1: collage ───────────────────────────────────────────────────────
+  async function fetchPreviews() {
+    try {
+      const resp = await fetch("/api/previews");
+      if (!resp.ok) return;
+      const fresh = await resp.json();
+
+      if (fresh.length === 0) {
+        document.getElementById("empty").style.display = "flex";
+        return;
+      }
+      document.getElementById("empty").style.display = "none";
+
+      // Detect genuinely new images so the slideshow queue stays live
+      const oldCount = previews.length;
+      previews = fresh;
+
+      if (!inSlideshow) {
+        renderCollage();
+        // Enter slideshow after a short pause to show the collage
+        if (previews.length > 0) {
+          setTimeout(enterSlideshow, 3000);
+        }
+      } else if (previews.length > oldCount) {
+        // New images arrived while slideshowing — queue is already updated
+      }
+    } catch (err) {
+      console.warn("fetchPreviews error:", err);
+    }
+  }
+
+  function renderCollage() {
+    const collage = document.getElementById("collage");
+    collage.innerHTML = "";
+    previews.forEach(function(p) {
+      const wrap = document.createElement("div");
+      wrap.className = "thumb";
+      const img = document.createElement("img");
+      img.src = p.preview_url;
+      img.alt = p.filename;
+      img.loading = "lazy";
+      wrap.appendChild(img);
+      collage.appendChild(wrap);
+    });
+  }
+
+  // ── Phase 2: slideshow ─────────────────────────────────────────────────────
+  function enterSlideshow() {
+    if (inSlideshow) return;
+    inSlideshow = true;
+
+    const collage   = document.getElementById("collage");
+    const slideshow = document.getElementById("slideshow");
+
+    // Fade collage out, reveal slideshow container
+    collage.style.opacity = "0";
+    setTimeout(function() {
+      collage.style.display = "none";
+      slideshow.style.opacity = "1";
+      showSlide(slideIndex);
+      slideTimer = setInterval(advance, SLIDE_INTERVAL_MS);
+    }, 1200);
+  }
+
+  function advance() {
+    slideIndex = (slideIndex + 1) % Math.max(previews.length, 1);
+    showSlide(slideIndex);
+  }
+
+  function showSlide(index) {
+    const preview    = previews[index];
+    if (!preview) return;
+
+    const slideshow  = document.getElementById("slideshow");
+    const transition = pickTransition();
+
+    // Preload full image
+    const img = new Image();
+    img.src   = imageUrl(preview.filename);
+    img.onload = function() {
+      const slide = document.createElement("div");
+      slide.className = "slide transition-" + transition;
+      slide.style.backgroundImage = "url('" + imageUrl(preview.filename) + "')";
+      slideshow.appendChild(slide);
+
+      // Remove stale slides (keep at most 2 for smooth crossfade)
+      const slides = slideshow.querySelectorAll(".slide");
+      if (slides.length > 2) {
+        slides[0].remove();
+      }
+    };
+  }
+
+  // ── Boot ───────────────────────────────────────────────────────────────────
+  fetchPreviews();
+  // Periodically refresh preview list (picks up new images + drives re-fetch)
+  setInterval(fetchPreviews, GRID_REFRESH_MS);
+</script>
+
+</body>
+</html>

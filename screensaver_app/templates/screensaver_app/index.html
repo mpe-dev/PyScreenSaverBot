@@ -92,6 +92,20 @@
       letter-spacing: 0.05em;
     }
 
+    /* ── Debug hint ───────────────────────────────────────────────── */
+    #dbg-hint {
+      position: fixed;
+      bottom: 10px;
+      right: 14px;
+      z-index: 500;
+      color: rgba(255, 255, 255, 0.18);
+      font-family: monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+      pointer-events: none;
+      user-select: none;
+    }
+
     /* ── Debug: nav buttons ───────────────────────────────────────── */
     .dbg-nav {
       display: none;
@@ -149,6 +163,8 @@
 <div id="slideshow"></div>
 <div id="empty">No images yet — waiting for ingestion...</div>
 
+<div id="dbg-hint">press D for debug</div>
+
 <!-- Debug controls (hidden until D is pressed) -->
 <button id="dbg-prev" class="dbg-nav" title="Previous (←)">&#8249;</button>
 <button id="dbg-next" class="dbg-nav" title="Next (→)">&#8250;</button>
@@ -195,6 +211,7 @@
     document.getElementById("dbg-bar").classList.toggle("visible", on);
     document.getElementById("dbg-prev").classList.toggle("visible", on);
     document.getElementById("dbg-next").classList.toggle("visible", on);
+    document.getElementById("dbg-hint").style.display = on ? "none" : "";
     document.getElementById("slideshow").style.pointerEvents = on ? "auto" : "none";
 
     if (on && slideTimer) {

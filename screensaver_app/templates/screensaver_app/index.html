@@ -136,25 +136,43 @@
       left: 0;
       right: 0;
       z-index: 1000;
-      background: rgba(0, 0, 0, 0.82);
+      background: rgba(0, 0, 0, 0.85);
       color: #ccc;
       font-family: monospace;
       font-size: 0.82rem;
-      padding: 9px 16px;
+      padding: 8px 14px 9px;
       border-top: 1px solid rgba(255, 235, 59, 0.35);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      line-height: 1.7;
+      line-height: 1.8;
     }
     #dbg-bar.visible { display: block; }
+
     #dbg-bar .lbl  { color: #ffeb3b; font-weight: bold; }
-    #dbg-bar .url  { color: #80d8ff; }
+    #dbg-bar .sep  { color: #444; margin: 0 6px; }
     #dbg-bar .ok   { color: #69f0ae; }
     #dbg-bar .err  { color: #ff5252; }
     #dbg-bar .dim  { color: #666; }
-    #dbg-bar kbd   { background: #333; border: 1px solid #555; border-radius: 3px;
-                     padding: 0 5px; font-size: 0.78rem; }
+    #dbg-bar .url  { color: #80d8ff; font-size: 0.78rem; }
+
+    #dbg-bar kbd {
+      background: #2a2a2a;
+      border: 1px solid #555;
+      border-radius: 3px;
+      padding: 0 5px;
+      font-size: 0.75rem;
+    }
+
+    #dbg-bar select {
+      background: #1e1e1e;
+      color: #eee;
+      border: 1px solid #555;
+      border-radius: 3px;
+      font-family: monospace;
+      font-size: 0.8rem;
+      padding: 1px 4px;
+      cursor: pointer;
+      outline: none;
+    }
+    #dbg-bar select:focus { border-color: #ffeb3b; }
   </style>
 </head>
 <body>
@@ -168,16 +186,51 @@
 <!-- Debug controls (hidden until D is pressed) -->
 <button id="dbg-prev" class="dbg-nav" title="Previous (←)">&#8249;</button>
 <button id="dbg-next" class="dbg-nav" title="Next (→)">&#8250;</button>
-<div id="dbg-bar"></div>
+
+<div id="dbg-bar">
+  <div>
+    <span class="lbl">DEBUG</span>
+    <span class="sep">|</span>
+    <kbd>D</kbd> exit
+    <span class="sep">|</span>
+    <kbd>&#8592;</kbd><kbd>&#8594;</kbd> navigate
+    <span class="sep">|</span>
+    <span id="dbg-idx">— / —</span>
+    <span class="sep">|</span>
+    transition
+    <select id="dbg-t-sel">
+      <option value="random">random</option>
+      <option value="burn">burn</option>
+      <option value="fade">fade</option>
+      <option value="slide">slide</option>
+      <option value="zoom">zoom</option>
+    </select>
+    <span id="dbg-last-t" class="dim"></span>
+    <span class="sep">|</span>
+    interval
+    <select id="dbg-i-sel">
+      <option value="1000">1 s</option>
+      <option value="2000">2 s</option>
+      <option value="3000">3 s</option>
+      <option value="5000">5 s</option>
+      <option value="10000">10 s</option>
+      <option value="30000">30 s</option>
+      <option value="60000">60 s</option>
+    </select>
+    <span class="sep">|</span>
+    <span id="dbg-status" class="dim">—</span>
+  </div>
+  <div class="url" id="dbg-url">—</div>
+</div>
 
 <script>
   "use strict";
 
   // ── Config injected by Django ──────────────────────────────────────────────
-  const GRID_REFRESH_MS   = {{ grid_fetch_interval_seconds }} * 1000;
-  const SLIDE_INTERVAL_MS = {{ slideshow_interval_seconds }} * 1000;
-  const TRANSITION        = "{{ transition }}";
-  const TRANSITION_MODE   = "{{ transition_mode }}";
+  const GRID_REFRESH_MS       = {{ grid_fetch_interval_seconds }} * 1000;
+  const SERVER_INTERVAL_MS    = {{ slideshow_interval_seconds }} * 1000;
+  const SERVER_TRANSITION     = "{{ transition }}";
+  const SERVER_TRANSITION_MODE = "{{ transition_mode }}";
 
   const ALL_TRANSITIONS = ["burn", "fade", "slide", "zoom"];
 
@@ -187,77 +240,100 @@
   let inSlideshow   = false;
   let slideTimer    = null;
 
-  // ── Debug state ────────────────────────────────────────────────────────────
-  let debugMode      = false;
-  let dbgTransition  = "";
-  let dbgLoadStatus  = "";   // "loading" | "ok" | "error"
-  let dbgErrorDetail = "";
+  // ── Debug state (persisted in localStorage) ────────────────────────────────
+  let debugMode       = false;
+  let activeTransition = "random";   // "random"|"burn"|"fade"|"slide"|"zoom"
+  let activeIntervalMs = SERVER_INTERVAL_MS;
+
+  let dbgLastTransition = "";
+  let dbgLoadStatus     = "";        // "loading" | "ok" | "error"
+  let dbgErrorDetail    = "";
+
+  // ── localStorage keys ──────────────────────────────────────────────────────
+  const LS_DEBUG      = "ss_debug";
+  const LS_TRANSITION = "ss_transition";
+  const LS_INTERVAL   = "ss_interval_ms";
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function pickTransition() {
-    if (TRANSITION_MODE === "random") {
+    if (activeTransition && activeTransition !== "random") {
+      return activeTransition;
+    }
+    // "random" override, or server default
+    if (SERVER_TRANSITION_MODE === "random" || activeTransition === "random") {
       return ALL_TRANSITIONS[Math.floor(Math.random() * ALL_TRANSITIONS.length)];
     }
-    return TRANSITION;
+    return SERVER_TRANSITION;
   }
 
   function imageUrl(filename) {
     return "/media/images/" + filename;
   }
 
+  function restartTimer() {
+    if (slideTimer) { clearInterval(slideTimer); slideTimer = null; }
+    if (inSlideshow && !debugMode) {
+      slideTimer = setInterval(advance, activeIntervalMs);
+    }
+  }
+
   // ── Debug overlay ──────────────────────────────────────────────────────────
   function setDebugMode(on) {
     debugMode = on;
+    localStorage.setItem(LS_DEBUG, on ? "true" : "false");
+
     document.getElementById("dbg-bar").classList.toggle("visible", on);
     document.getElementById("dbg-prev").classList.toggle("visible", on);
     document.getElementById("dbg-next").classList.toggle("visible", on);
     document.getElementById("dbg-hint").style.display = on ? "none" : "";
     document.getElementById("slideshow").style.pointerEvents = on ? "auto" : "none";
 
-    if (on && slideTimer) {
-      clearInterval(slideTimer);
-      slideTimer = null;
-    } else if (!on && inSlideshow && !slideTimer) {
-      slideTimer = setInterval(advance, SLIDE_INTERVAL_MS);
-    }
+    restartTimer();
     updateDebugBar();
   }
 
   function updateDebugBar() {
     if (!debugMode) return;
-    const bar = document.getElementById("dbg-bar");
-    const p   = previews[slideIndex];
+    const p = previews[slideIndex];
 
-    if (!p) {
-      bar.innerHTML = '<span class="lbl">DEBUG</span> &nbsp;—&nbsp; no images loaded';
-      return;
-    }
+    document.getElementById("dbg-idx").textContent =
+      p ? (slideIndex + 1) + " / " + previews.length : "— / —";
+    document.getElementById("dbg-url").textContent =
+      p ? imageUrl(p.filename) : "—";
+    document.getElementById("dbg-last-t").textContent =
+      dbgLastTransition ? "(" + dbgLastTransition + ")" : "";
 
-    const url = imageUrl(p.filename);
-    let statusHtml;
+    const statusEl = document.getElementById("dbg-status");
     if (dbgLoadStatus === "ok") {
-      statusHtml = '<span class="ok">&#10003; loaded</span>';
+      statusEl.className = "ok";
+      statusEl.textContent = "\u2713 loaded";
     } else if (dbgLoadStatus === "error") {
-      statusHtml = '<span class="err">&#10007; load failed' +
-        (dbgErrorDetail ? ' (' + dbgErrorDetail + ')' : '') + '</span>';
+      statusEl.className = "err";
+      statusEl.textContent = "\u2717 failed" + (dbgErrorDetail ? " \u2014 " + dbgErrorDetail : "");
     } else {
-      statusHtml = '<span class="dim">loading&hellip;</span>';
+      statusEl.className = "dim";
+      statusEl.textContent = dbgLoadStatus === "loading" ? "loading\u2026" : "\u2014";
     }
-
-    bar.innerHTML =
-      '<span class="lbl">DEBUG</span>' +
-      ' &nbsp;<span class="dim">|</span>&nbsp; <kbd>D</kbd> toggle' +
-      ' &nbsp;<span class="dim">|</span>&nbsp; <kbd>←</kbd><kbd>→</kbd> navigate' +
-      ' &nbsp;<span class="dim">|</span>&nbsp; ' +
-        (slideIndex + 1) + ' / ' + previews.length +
-      ' &nbsp;<span class="dim">|</span>&nbsp; ' +
-        'transition: <span style="color:#ffd54f">' + (dbgTransition || '—') + '</span>' +
-      ' &nbsp;<span class="dim">|</span>&nbsp; ' + statusHtml +
-      '<br><span class="url">' + url + '</span>';
   }
+
+  // ── Debug select: transition ───────────────────────────────────────────────
+  document.getElementById("dbg-t-sel").addEventListener("change", function() {
+    activeTransition = this.value;
+    localStorage.setItem(LS_TRANSITION, activeTransition);
+  });
+
+  // ── Debug select: interval ─────────────────────────────────────────────────
+  document.getElementById("dbg-i-sel").addEventListener("change", function() {
+    activeIntervalMs = parseInt(this.value);
+    localStorage.setItem(LS_INTERVAL, activeIntervalMs);
+    restartTimer();
+  });
 
   // ── Keyboard + button navigation ───────────────────────────────────────────
   document.addEventListener("keydown", function(e) {
+    // Don't intercept when typing in a select
+    if (e.target.tagName === "SELECT") return;
+
     if (e.key === "d" || e.key === "D") {
       setDebugMode(!debugMode);
       return;
@@ -339,9 +415,7 @@
       collage.style.display = "none";
       slideshow.style.opacity = "1";
       showSlide(slideIndex);
-      if (!debugMode) {
-        slideTimer = setInterval(advance, SLIDE_INTERVAL_MS);
-      }
+      restartTimer();
     }, 1200);
   }
 
@@ -351,15 +425,15 @@
   }
 
   function showSlide(index) {
-    const preview    = previews[index];
+    const preview = previews[index];
     if (!preview) return;
 
     const slideshow  = document.getElementById("slideshow");
     const transition = pickTransition();
 
-    dbgTransition  = transition;
-    dbgLoadStatus  = "loading";
-    dbgErrorDetail = "";
+    dbgLastTransition = transition;
+    dbgLoadStatus     = "loading";
+    dbgErrorDetail    = "";
     updateDebugBar();
 
     const img = new Image();
@@ -378,9 +452,7 @@
       slideshow.appendChild(slide);
 
       const slides = slideshow.querySelectorAll(".slide");
-      if (slides.length > 2) {
-        slides[0].remove();
-      }
+      if (slides.length > 2) { slides[0].remove(); }
     };
 
     img.onerror = function() {
@@ -390,6 +462,31 @@
       console.error("Failed to load image:", imageUrl(preview.filename));
     };
   }
+
+  // ── Boot: restore persisted debug settings ─────────────────────────────────
+  (function restoreDebugSettings() {
+    // Transition
+    const storedT = localStorage.getItem(LS_TRANSITION);
+    if (storedT) activeTransition = storedT;
+    document.getElementById("dbg-t-sel").value = activeTransition;
+
+    // Interval — ensure the stored/server value appears in the select
+    const storedI = localStorage.getItem(LS_INTERVAL);
+    if (storedI) activeIntervalMs = parseInt(storedI);
+    const iSel = document.getElementById("dbg-i-sel");
+    if (![...iSel.options].some(function(o) { return parseInt(o.value) === activeIntervalMs; })) {
+      const opt = document.createElement("option");
+      opt.value = activeIntervalMs;
+      opt.textContent = (activeIntervalMs / 1000) + " s";
+      iSel.insertBefore(opt, iSel.firstChild);
+    }
+    iSel.value = activeIntervalMs;
+
+    // Debug mode
+    if (localStorage.getItem(LS_DEBUG) === "true") {
+      setDebugMode(true);
+    }
+  })();
 
   // ── Boot ───────────────────────────────────────────────────────────────────
   fetchPreviews();

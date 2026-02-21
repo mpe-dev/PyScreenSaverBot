@@ -13,19 +13,30 @@ PREVIEW_MAX_WIDTH = 400
 
 
 def save_image(data: bytes) -> Path:
-    """Write raw image bytes to media/images/ with a timestamp-based filename.
+    """Decode *data*, convert to JPEG, and write to media/images/.
 
+    Always saves as a real JPEG regardless of the source format (WEBP, PNG,
+    GIF, etc.) so the .jpg extension is accurate and browsers can display it.
     Returns the Path of the saved file.
     """
+    import io
+
     images_dir = Path(settings.MEDIA_ROOT) / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
 
     filename = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f") + ".jpg"
     dest = images_dir / filename
 
-    logger.debug("save_image: writing %d bytes → %s", len(data), dest)
-    dest.write_bytes(data)
-    logger.info("Image saved: %s (%.1f KB)", filename, len(data) / 1024)
+    logger.debug("save_image: decoding %d bytes (source format detection)", len(data))
+    with Image.open(io.BytesIO(data)) as img:
+        source_format = img.format or "unknown"
+        source_size = img.size
+        jpeg_img = img.convert("RGB")
+        jpeg_img.save(dest, "JPEG", quality=90, optimize=True)
+
+    saved_bytes = dest.stat().st_size
+    logger.info("Image saved: %s | source=%s %dx%d | jpeg=%.1f KB",
+                filename, source_format, *source_size, saved_bytes / 1024)
     return dest
 
 

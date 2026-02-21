@@ -57,9 +57,15 @@
     .slide {
       position: absolute;
       inset: 0;
-      background-size: cover;
-      background-position: center;
-      background-repeat: no-repeat;
+      overflow: hidden;
+    }
+
+    .slide img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      image-orientation: from-image;
     }
 
     /* ── Transition keyframes ─────────────────────────────────────── */
@@ -348,7 +354,10 @@
 
       const slide = document.createElement("div");
       slide.className = "slide transition-" + transition;
-      slide.style.backgroundImage = "url('" + imageUrl(preview.filename) + "')";
+      const imgEl = document.createElement("img");
+      imgEl.src = imageUrl(preview.filename);
+      imgEl.alt = preview.filename;
+      slide.appendChild(imgEl);
       slideshow.appendChild(slide);
 
       const slides = slideshow.querySelectorAll(".slide");

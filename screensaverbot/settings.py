@@ -98,6 +98,10 @@ LOGGING = {
             "format": "%(asctime)s %(levelname)-8s %(name)s: %(message)s",
             "datefmt": "%Y-%m-%d %H:%M:%S",
         },
+        "message_only": {
+            # Used by the DB handler — timestamp/level stored as separate columns
+            "format": "%(message)s",
+        },
     },
     "handlers": {
         "file": {
@@ -109,9 +113,28 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "standard",
         },
+        "database": {
+            "class": "screensaver_app.log_handler.DatabaseLogHandler",
+            "formatter": "message_only",
+            "level": "DEBUG",
+        },
     },
     "root": {
         "handlers": ["file", "console"],
         "level": "INFO",
+    },
+    # App-specific loggers get DEBUG level + DB persistence.
+    # propagate=False prevents double-logging to root.
+    "loggers": {
+        "ingestion_app": {
+            "handlers": ["file", "console", "database"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+        "screensaver_app": {
+            "handlers": ["file", "console", "database"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
     },
 }

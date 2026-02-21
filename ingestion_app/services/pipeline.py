@@ -22,9 +22,10 @@ def save_image(data: bytes) -> Path:
 
     filename = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f") + ".jpg"
     dest = images_dir / filename
-    dest.write_bytes(data)
 
-    logger.info("Image saved: %s", filename)
+    logger.debug("save_image: writing %d bytes → %s", len(data), dest)
+    dest.write_bytes(data)
+    logger.info("Image saved: %s (%.1f KB)", filename, len(data) / 1024)
     return dest
 
 
@@ -39,14 +40,20 @@ def generate_preview(source: Path) -> Path:
 
     dest = previews_dir / source.name
     if dest.exists():
+        logger.debug("generate_preview: skipping %s (preview already exists)", source.name)
         return dest
 
+    logger.debug("generate_preview: opening %s", source.name)
     with Image.open(source) as img:
         img = img.convert("RGB")
+        original_size = (img.width, img.height)
         ratio = PREVIEW_MAX_WIDTH / img.width
         new_size = (PREVIEW_MAX_WIDTH, max(1, int(img.height * ratio)))
+        logger.debug("generate_preview: resizing %s from %dx%d → %dx%d",
+                     source.name, *original_size, *new_size)
         thumb = img.resize(new_size, Image.LANCZOS)
         thumb.save(dest, "JPEG", quality=85, optimize=True)
 
-    logger.info("Preview generated: %s", source.name)
+    logger.info("Preview generated: %s (%dx%d → %dx%d)",
+                source.name, *original_size, *new_size)
     return dest

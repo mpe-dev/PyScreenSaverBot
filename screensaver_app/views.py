@@ -16,7 +16,11 @@ _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
 def index(request: HttpRequest) -> HttpResponse:
     """Serve the fullscreen slideshow page."""
+    logger.debug("Screensaver index requested from %s", request.META.get("REMOTE_ADDR", "?"))
     config = ScreensaverConfig.get()
+    logger.debug("ScreensaverConfig: transition=%s mode=%s slide_interval=%ds grid_interval=%ds",
+                 config.transition, config.transition_mode,
+                 config.slideshow_interval_seconds, config.grid_fetch_interval_seconds)
     return render(request, "screensaver_app/index.html", {
         "grid_fetch_interval_seconds": config.grid_fetch_interval_seconds,
         "slideshow_interval_seconds": config.slideshow_interval_seconds,
@@ -38,4 +42,5 @@ def api_previews(request: HttpRequest) -> JsonResponse:
                     "preview_url": f"{settings.MEDIA_URL}previews/{f.name}",
                 })
 
+    logger.debug("api_previews: returning %d preview(s)", len(result))
     return JsonResponse(result, safe=False)

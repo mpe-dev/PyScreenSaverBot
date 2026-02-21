@@ -85,3 +85,28 @@ class CleanupConfig(SingletonModel):
 
     def __str__(self) -> str:
         return "Cleanup Configuration"
+
+
+class AppLog(models.Model):
+    """Persisted application log entries, written by DatabaseLogHandler."""
+
+    LEVEL_CHOICES = [
+        ("DEBUG", "Debug"),
+        ("INFO", "Info"),
+        ("WARNING", "Warning"),
+        ("ERROR", "Error"),
+        ("CRITICAL", "Critical"),
+    ]
+
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    level = models.CharField(max_length=10, choices=LEVEL_CHOICES, db_index=True)
+    logger_name = models.CharField(max_length=200, db_index=True)
+    message = models.TextField()
+
+    class Meta:
+        ordering = ["-timestamp"]
+        verbose_name = "Log Entry"
+        verbose_name_plural = "Log Entries"
+
+    def __str__(self) -> str:
+        return f"[{self.level}] {self.logger_name}: {self.message[:80]}"

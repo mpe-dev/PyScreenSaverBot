@@ -85,6 +85,56 @@
       font-size: 1.4rem;
       letter-spacing: 0.05em;
     }
+
+    /* ── Debug: nav buttons ───────────────────────────────────────── */
+    .dbg-nav {
+      display: none;
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      width: 80px;
+      z-index: 999;
+      background: transparent;
+      border: none;
+      color: rgba(255, 255, 255, 0.35);
+      font-size: 4rem;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s, color 0.2s;
+    }
+    .dbg-nav:hover { background: rgba(255, 255, 255, 0.10); color: #fff; }
+    .dbg-nav.visible { display: flex; }
+    #dbg-prev { left: 0; }
+    #dbg-next { right: 0; }
+
+    /* ── Debug: info bar ──────────────────────────────────────────── */
+    #dbg-bar {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      background: rgba(0, 0, 0, 0.82);
+      color: #ccc;
+      font-family: monospace;
+      font-size: 0.82rem;
+      padding: 9px 16px;
+      border-top: 1px solid rgba(255, 235, 59, 0.35);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.7;
+    }
+    #dbg-bar.visible { display: block; }
+    #dbg-bar .lbl  { color: #ffeb3b; font-weight: bold; }
+    #dbg-bar .url  { color: #80d8ff; }
+    #dbg-bar .ok   { color: #69f0ae; }
+    #dbg-bar .err  { color: #ff5252; }
+    #dbg-bar .dim  { color: #666; }
+    #dbg-bar kbd   { background: #333; border: 1px solid #555; border-radius: 3px;
+                     padding: 0 5px; font-size: 0.78rem; }
   </style>
 </head>
 <body>
@@ -92,6 +142,11 @@
 <div id="collage"></div>
 <div id="slideshow"></div>
 <div id="empty">No images yet — waiting for ingestion...</div>
+
+<!-- Debug controls (hidden until D is pressed) -->
+<button id="dbg-prev" class="dbg-nav" title="Previous (←)">&#8249;</button>
+<button id="dbg-next" class="dbg-nav" title="Next (→)">&#8250;</button>
+<div id="dbg-bar"></div>
 
 <script>
   "use strict";
@@ -105,10 +160,16 @@
   const ALL_TRANSITIONS = ["burn", "fade", "slide", "zoom"];
 
   // ── State ──────────────────────────────────────────────────────────────────
-  let previews     = [];
-  let slideIndex   = 0;
-  let inSlideshow  = false;
-  let slideTimer   = null;
+  let previews      = [];
+  let slideIndex    = 0;
+  let inSlideshow   = false;
+  let slideTimer    = null;
+
+  // ── Debug state ────────────────────────────────────────────────────────────
+  let debugMode      = false;
+  let dbgTransition  = "";
+  let dbgLoadStatus  = "";   // "loading" | "ok" | "error"
+  let dbgErrorDetail = "";
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function pickTransition() {
@@ -121,6 +182,82 @@
   function imageUrl(filename) {
     return "/media/images/" + filename;
   }
+
+  // ── Debug overlay ──────────────────────────────────────────────────────────
+  function setDebugMode(on) {
+    debugMode = on;
+    document.getElementById("dbg-bar").classList.toggle("visible", on);
+    document.getElementById("dbg-prev").classList.toggle("visible", on);
+    document.getElementById("dbg-next").classList.toggle("visible", on);
+    document.getElementById("slideshow").style.pointerEvents = on ? "auto" : "none";
+
+    if (on && slideTimer) {
+      clearInterval(slideTimer);
+      slideTimer = null;
+    } else if (!on && inSlideshow && !slideTimer) {
+      slideTimer = setInterval(advance, SLIDE_INTERVAL_MS);
+    }
+    updateDebugBar();
+  }
+
+  function updateDebugBar() {
+    if (!debugMode) return;
+    const bar = document.getElementById("dbg-bar");
+    const p   = previews[slideIndex];
+
+    if (!p) {
+      bar.innerHTML = '<span class="lbl">DEBUG</span> &nbsp;—&nbsp; no images loaded';
+      return;
+    }
+
+    const url = imageUrl(p.filename);
+    let statusHtml;
+    if (dbgLoadStatus === "ok") {
+      statusHtml = '<span class="ok">&#10003; loaded</span>';
+    } else if (dbgLoadStatus === "error") {
+      statusHtml = '<span class="err">&#10007; load failed' +
+        (dbgErrorDetail ? ' (' + dbgErrorDetail + ')' : '') + '</span>';
+    } else {
+      statusHtml = '<span class="dim">loading&hellip;</span>';
+    }
+
+    bar.innerHTML =
+      '<span class="lbl">DEBUG</span>' +
+      ' &nbsp;<span class="dim">|</span>&nbsp; <kbd>D</kbd> toggle' +
+      ' &nbsp;<span class="dim">|</span>&nbsp; <kbd>←</kbd><kbd>→</kbd> navigate' +
+      ' &nbsp;<span class="dim">|</span>&nbsp; ' +
+        (slideIndex + 1) + ' / ' + previews.length +
+      ' &nbsp;<span class="dim">|</span>&nbsp; ' +
+        'transition: <span style="color:#ffd54f">' + (dbgTransition || '—') + '</span>' +
+      ' &nbsp;<span class="dim">|</span>&nbsp; ' + statusHtml +
+      '<br><span class="url">' + url + '</span>';
+  }
+
+  // ── Keyboard + button navigation ───────────────────────────────────────────
+  document.addEventListener("keydown", function(e) {
+    if (e.key === "d" || e.key === "D") {
+      setDebugMode(!debugMode);
+      return;
+    }
+    if (!debugMode) return;
+    if (e.key === "ArrowLeft") {
+      slideIndex = (slideIndex - 1 + Math.max(previews.length, 1)) % Math.max(previews.length, 1);
+      showSlide(slideIndex);
+    } else if (e.key === "ArrowRight") {
+      slideIndex = (slideIndex + 1) % Math.max(previews.length, 1);
+      showSlide(slideIndex);
+    }
+  });
+
+  document.getElementById("dbg-prev").addEventListener("click", function() {
+    slideIndex = (slideIndex - 1 + Math.max(previews.length, 1)) % Math.max(previews.length, 1);
+    showSlide(slideIndex);
+  });
+
+  document.getElementById("dbg-next").addEventListener("click", function() {
+    slideIndex = (slideIndex + 1) % Math.max(previews.length, 1);
+    showSlide(slideIndex);
+  });
 
   // ── Phase 1: collage ───────────────────────────────────────────────────────
   async function fetchPreviews() {
@@ -135,13 +272,11 @@
       }
       document.getElementById("empty").style.display = "none";
 
-      // Detect genuinely new images so the slideshow queue stays live
       const oldCount = previews.length;
       previews = fresh;
 
       if (!inSlideshow) {
         renderCollage();
-        // Enter slideshow after a short pause to show the collage
         if (previews.length > 0) {
           setTimeout(enterSlideshow, 3000);
         }
@@ -176,13 +311,14 @@
     const collage   = document.getElementById("collage");
     const slideshow = document.getElementById("slideshow");
 
-    // Fade collage out, reveal slideshow container
     collage.style.opacity = "0";
     setTimeout(function() {
       collage.style.display = "none";
       slideshow.style.opacity = "1";
       showSlide(slideIndex);
-      slideTimer = setInterval(advance, SLIDE_INTERVAL_MS);
+      if (!debugMode) {
+        slideTimer = setInterval(advance, SLIDE_INTERVAL_MS);
+      }
     }, 1200);
   }
 
@@ -198,26 +334,39 @@
     const slideshow  = document.getElementById("slideshow");
     const transition = pickTransition();
 
-    // Preload full image
+    dbgTransition  = transition;
+    dbgLoadStatus  = "loading";
+    dbgErrorDetail = "";
+    updateDebugBar();
+
     const img = new Image();
-    img.src   = imageUrl(preview.filename);
+    img.src = imageUrl(preview.filename);
+
     img.onload = function() {
+      dbgLoadStatus = "ok";
+      updateDebugBar();
+
       const slide = document.createElement("div");
       slide.className = "slide transition-" + transition;
       slide.style.backgroundImage = "url('" + imageUrl(preview.filename) + "')";
       slideshow.appendChild(slide);
 
-      // Remove stale slides (keep at most 2 for smooth crossfade)
       const slides = slideshow.querySelectorAll(".slide");
       if (slides.length > 2) {
         slides[0].remove();
       }
     };
+
+    img.onerror = function() {
+      dbgLoadStatus  = "error";
+      dbgErrorDetail = "browser could not load image";
+      updateDebugBar();
+      console.error("Failed to load image:", imageUrl(preview.filename));
+    };
   }
 
   // ── Boot ───────────────────────────────────────────────────────────────────
   fetchPreviews();
-  // Periodically refresh preview list (picks up new images + drives re-fetch)
   setInterval(fetchPreviews, GRID_REFRESH_MS);
 </script>
 

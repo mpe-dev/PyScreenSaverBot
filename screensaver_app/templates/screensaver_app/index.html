@@ -69,16 +69,42 @@
     }
 
     /* ── Transition keyframes ─────────────────────────────────────── */
-    @keyframes burnIn   { from { filter: brightness(0); } to { filter: brightness(1); } }
-    @keyframes fadeIn   { from { opacity: 0; }            to { opacity: 1; } }
-    @keyframes slideIn  { from { transform: translateX(100%); } to { transform: translateX(0); } }
-    @keyframes zoomIn   { from { transform: scale(1.15); opacity: 0; }
-                          to   { transform: scale(1);    opacity: 1; } }
+    @keyframes burnIn     { from { filter: brightness(0); }                       to { filter: brightness(1); } }
+    @keyframes fadeIn     { from { opacity: 0; }                                  to { opacity: 1; } }
+    @keyframes slideIn    { from { transform: translateX(100%); }                 to { transform: translateX(0); } }
+    @keyframes zoomIn     { from { transform: scale(1.15); opacity: 0; }          to { transform: scale(1); opacity: 1; } }
+    @keyframes blurIn     { from { filter: blur(24px); opacity: 0; }              to { filter: blur(0); opacity: 1; } }
+    @keyframes flipIn     { from { transform: perspective(1200px) rotateY(-90deg); opacity: 0; }
+                            to   { transform: perspective(1200px) rotateY(0deg);  opacity: 1; } }
+    @keyframes wipeUpIn   { from { transform: translateY(100%); }                 to { transform: translateY(0); } }
+    @keyframes wipeDownIn { from { transform: translateY(-100%); }                to { transform: translateY(0); } }
+    @keyframes irisIn     { from { clip-path: circle(0% at 50% 50%); }            to { clip-path: circle(150% at 50% 50%); } }
+    @keyframes newspaperIn {
+      from { transform: rotate(-12deg) scale(0.1); opacity: 0; }
+      to   { transform: rotate(0)      scale(1);   opacity: 1; }
+    }
+    @keyframes glitchIn {
+      0%   { clip-path: inset(40% 0 40% 0); transform: translateX(-12px); opacity: 0;   }
+      20%  { clip-path: inset(5%  0 65% 0); transform: translateX(10px);  opacity: 0.5; }
+      40%  { clip-path: inset(60% 0 5%  0); transform: translateX(-6px);  opacity: 0.7; }
+      60%  { clip-path: inset(0%  0 0%  0); transform: translateX(4px);   opacity: 0.85;}
+      80%  { clip-path: inset(0%  0 0%  0); transform: translateX(-2px);  opacity: 0.95;}
+      100% { clip-path: inset(0%  0 0%  0); transform: translateX(0);     opacity: 1;   }
+    }
+    @keyframes squeezeIn  { from { transform: scaleX(0); }                        to { transform: scaleX(1); } }
 
-    .transition-burn  { animation: burnIn  1.4s ease forwards; }
-    .transition-fade  { animation: fadeIn  1.4s ease forwards; }
-    .transition-slide { animation: slideIn 0.9s ease forwards; }
-    .transition-zoom  { animation: zoomIn  1.4s ease forwards; }
+    .transition-burn      { animation: burnIn      1.4s ease         forwards; }
+    .transition-fade      { animation: fadeIn      1.4s ease         forwards; }
+    .transition-slide     { animation: slideIn     0.9s ease         forwards; }
+    .transition-zoom      { animation: zoomIn      1.4s ease         forwards; }
+    .transition-blur      { animation: blurIn      1.2s ease         forwards; }
+    .transition-flip      { animation: flipIn      0.8s ease         forwards; }
+    .transition-wipe-up   { animation: wipeUpIn    0.8s ease         forwards; }
+    .transition-wipe-down { animation: wipeDownIn  0.8s ease         forwards; }
+    .transition-iris      { animation: irisIn      1.0s ease         forwards; }
+    .transition-newspaper { animation: newspaperIn 0.8s ease         forwards; }
+    .transition-glitch    { animation: glitchIn    0.55s linear      forwards; }
+    .transition-squeeze   { animation: squeezeIn   0.7s ease         forwards; }
 
     /* ── Empty-state message ──────────────────────────────────────── */
     #empty {
@@ -204,6 +230,14 @@
       <option value="fade">fade</option>
       <option value="slide">slide</option>
       <option value="zoom">zoom</option>
+      <option value="blur">blur</option>
+      <option value="flip">flip</option>
+      <option value="wipe-up">wipe up</option>
+      <option value="wipe-down">wipe down</option>
+      <option value="iris">iris</option>
+      <option value="newspaper">newspaper</option>
+      <option value="glitch">glitch</option>
+      <option value="squeeze">squeeze</option>
     </select>
     <span id="dbg-last-t" class="dim"></span>
     <span class="sep">|</span>
@@ -232,7 +266,11 @@
   const SERVER_TRANSITION     = "{{ transition }}";
   const SERVER_TRANSITION_MODE = "{{ transition_mode }}";
 
-  const ALL_TRANSITIONS = ["burn", "fade", "slide", "zoom"];
+  const ALL_TRANSITIONS = [
+    "burn", "fade", "slide", "zoom",
+    "blur", "flip", "wipe-up", "wipe-down",
+    "iris", "newspaper", "glitch", "squeeze",
+  ];
 
   // ── State ──────────────────────────────────────────────────────────────────
   let previews      = [];

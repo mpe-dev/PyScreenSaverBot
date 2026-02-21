@@ -33,6 +33,14 @@ class ScreensaverConfig(SingletonModel):
         ("fade", "Fade"),
         ("slide", "Slide"),
         ("zoom", "Zoom"),
+        ("blur", "Blur"),
+        ("flip", "Flip"),
+        ("wipe-up", "Wipe Up"),
+        ("wipe-down", "Wipe Down"),
+        ("iris", "Iris"),
+        ("newspaper", "Newspaper"),
+        ("glitch", "Glitch"),
+        ("squeeze", "Squeeze"),
     ]
     TRANSITION_MODE_CHOICES = [
         ("fixed", "Fixed — always use the selected transition"),
